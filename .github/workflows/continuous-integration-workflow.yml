@@ -38,22 +38,22 @@ jobs:
             target/
           key: rustc-test-${{ steps.rustc-toolchain.outputs.rustc_hash }}-cargo-${{ hashFiles('**/Cargo.toml') }}
 
-      - name: Build in plonky2 directory
+      - name: Check in plonky2 subdirectory
         uses: actions-rs/cargo@v1
         with:
-          path: plonky2/
-          command: build
+          command: check
+          args: --manifest-path plonky2/Cargo.toml
         env:
           RUSTFLAGS: -Copt-level=3 -Cdebug-assertions -Coverflow-checks=y -Cdebuginfo=0
           RUST_LOG: 1
           CARGO_INCREMENTAL: 1
           RUST_BACKTRACE: 1
 
-      - name: Build in starky directory
+      - name: Check in starky subdirectory
         uses: actions-rs/cargo@v1
         with:
-          path: starky/
-          command: build
+          command: check
+          args: --manifest-path starky/Cargo.toml
         env:
           RUSTFLAGS: -Copt-level=3 -Cdebug-assertions -Coverflow-checks=y -Cdebuginfo=0
           RUST_LOG: 1
