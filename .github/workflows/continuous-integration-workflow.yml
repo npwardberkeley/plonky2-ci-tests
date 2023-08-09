@@ -80,7 +80,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --workspace --features ${{ matrix.feature }}
+          args: --workspace --target_feature ${{ matrix.feature }}
         env:
           RUSTFLAGS: -Copt-level=3 -Cdebug-assertions -Coverflow-checks=y -Cdebuginfo=0
           RUST_LOG: 1
