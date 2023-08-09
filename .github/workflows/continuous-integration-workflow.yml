@@ -18,7 +18,7 @@ jobs:
     strategy: 
       matrix:
         target: [ aarch64-unknown-linux-gnu, armv7-unknown-linux-gnueabihf, arm-unknown-linux-gnueabi, x86_64-unknown-linux-gnu, x86_64-unknown-linux-musl ]
-        feature: [ avx2, avx512bw, avx512cd, avx512dq, avx512f, avx512vl, neon ]
+        feature: [ +avx2, +avx512bw, +avx512cd, +avx512dq, +avx512f, +avx512vl, +neon ]
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
