@@ -17,7 +17,8 @@ jobs:
     if: "! contains(toJSON(github.event.commits.*.message), '[skip-ci]')"
     strategy: 
       matrix:
-        target: [ aarch64-unknown-linux-gnu, armv7-unknown-linux-gnueabihf, i686-unknown-linux-gnu, i686-unknown-linux-musl, mips-unknown-linux-gnu, mips64-unknown-linux-gnuabi64, mips64el-unknown-linux-gnuabi64, mipsel-unknown-linux-gnu, powerpc-unknown-linux-gnu, powerpc64-unknown-linux-gnu, powerpc64le-unknown-linux-gnu, arm-unknown-linux-gnueabi, x86_64-unknown-linux-gnu, x86_64-unknown-linux-musl ]
+        target: [ aarch64-unknown-linux-gnu, armv7-unknown-linux-gnueabihf, arm-unknown-linux-gnueabi, x86_64-unknown-linux-gnu, x86_64-unknown-linux-musl ]
+        feature: [ avx2, avx512bw, avx512cd, avx512dq, avx512f, avx512vl, neon ]
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
@@ -29,6 +30,7 @@ jobs:
           profile: minimal
           toolchain: nightly-2023-06-30
           override: true
+          targets: ${{ matrix.target }}
 
       - name: rust-cache
         uses: actions/cache@v3
@@ -78,7 +80,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --workspace
+          args: --workspace --features ${{ matrix.feature }}
         env:
           RUSTFLAGS: -Copt-level=3 -Cdebug-assertions -Coverflow-checks=y -Cdebuginfo=0
           RUST_LOG: 1
