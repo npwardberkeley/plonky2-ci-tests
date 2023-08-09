@@ -30,7 +30,7 @@ jobs:
           profile: minimal
           toolchain: nightly-2023-06-30
           override: true
-          targets: ${{ matrix.target }}
+          target: ${{ matrix.target }}
 
       - name: rust-cache
         uses: actions/cache@v3
