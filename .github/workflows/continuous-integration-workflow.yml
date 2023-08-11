@@ -17,7 +17,7 @@ jobs:
     if: "! contains(toJSON(github.event.commits.*.message), '[skip-ci]')"
     strategy: 
       matrix:
-        feature: [ +neon, -neon ]
+        feature: [ "+v7,+neon", "" ]
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
