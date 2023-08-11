@@ -29,7 +29,7 @@ jobs:
           profile: minimal
           toolchain: nightly-2023-06-30
           override: true
-          target: arm-unknown-linux-gnueabi
+          target: armv7-unknown-linux-gnueabihf
 
       - name: rust-cache
         uses: actions/cache@v3
