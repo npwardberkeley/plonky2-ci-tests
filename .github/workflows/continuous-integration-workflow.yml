@@ -12,12 +12,12 @@ on:
 
 jobs:  
   test-aarch64:
-    name: Test Suite AArch64
+    name: Test Suite ARM
     runs-on: ubuntu-latest
     if: "! contains(toJSON(github.event.commits.*.message), '[skip-ci]')"
     strategy: 
       matrix:
-        feature: [ "+v7,+neon", "" ]
+        feature: [ "+v7,+neon", "-neon" ]
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
@@ -29,7 +29,7 @@ jobs:
           profile: minimal
           toolchain: nightly-2023-06-30
           override: true
-          target: aarch64-apple-darwin
+          target: arm-unknown-linux-gnueabi
 
       - name: rust-cache
         uses: actions/cache@v3
@@ -92,7 +92,7 @@ jobs:
     if: "! contains(toJSON(github.event.commits.*.message), '[skip-ci]')"
     strategy: 
       matrix:
-        feature: [ +avx2, +avx, "-avx,-avx2" ]
+        feature: [ +avx2, "-avx2,-avx512bw,-avx512cd,-avx512dq,-avx512f,-avx512vl", "+avx512bw,+avx512cd,+avx512dq,+avx512f,+avx512vl" ]
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
