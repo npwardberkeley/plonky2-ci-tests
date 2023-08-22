@@ -5,6 +5,7 @@ use plonky2::field::types::Field;
 use plonky2::hash::hash_types::RichField;
 use plonky2::iop::ext_target::ExtensionTarget;
 
+use super::columns::COL_MAP;
 use crate::constraint_consumer::{ConstraintConsumer, RecursiveConstraintConsumer};
 use crate::cpu::columns::ops::OpsColumnsView;
 use crate::cpu::columns::CpuColumnsView;
@@ -31,11 +32,8 @@ const SIMPLE_OPCODES: OpsColumnsView<Option<u32>> = OpsColumnsView {
     submod: KERNEL_ONLY_INSTR,
     lt: G_VERYLOW,
     gt: G_VERYLOW,
-    eq: G_VERYLOW,
-    iszero: G_VERYLOW,
-    and: G_VERYLOW,
-    or: G_VERYLOW,
-    xor: G_VERYLOW,
+    eq_iszero: G_VERYLOW,
+    logic_op: G_VERYLOW,
     not: G_VERYLOW,
     byte: G_VERYLOW,
     shl: G_VERYLOW,
@@ -43,16 +41,14 @@ const SIMPLE_OPCODES: OpsColumnsView<Option<u32>> = OpsColumnsView {
     keccak_general: KERNEL_ONLY_INSTR,
     prover_input: KERNEL_ONLY_INSTR,
     pop: G_BASE,
-    jump: G_MID,
-    jumpi: G_HIGH,
+    jumps: None, // Combined flag handled separately.
     pc: G_BASE,
     jumpdest: G_JUMPDEST,
     push0: G_BASE,
     push: G_VERYLOW,
     dup: G_VERYLOW,
     swap: G_VERYLOW,
-    get_context: KERNEL_ONLY_INSTR,
-    set_context: KERNEL_ONLY_INSTR,
+    context_op: KERNEL_ONLY_INSTR,
     exit_kernel: None,
     mload_general: KERNEL_ONLY_INSTR,
     mstore_general: KERNEL_ONLY_INSTR,
@@ -67,7 +63,7 @@ fn eval_packed_accumulate<P: PackedField>(
 ) {
     // Is it an instruction that we constrain here?
     // I.e., does it always cost a constant amount of gas?
-    let is_simple_instr: P = SIMPLE_OPCODES
+    let filter: P = SIMPLE_OPCODES
         .into_iter()
         .enumerate()
         .filter_map(|(i, maybe_cost)| {
@@ -75,7 +71,6 @@ fn eval_packed_accumulate<P: PackedField>(
             maybe_cost.map(|_| lv.op[i])
         })
         .sum();
-    let filter = lv.is_cpu_cycle * is_simple_instr;
 
     // How much gas did we use?
     let gas_used: P = SIMPLE_OPCODES
@@ -92,10 +87,14 @@ fn eval_packed_accumulate<P: PackedField>(
     for (maybe_cost, op_flag) in izip!(SIMPLE_OPCODES.into_iter(), lv.op.into_iter()) {
         if let Some(cost) = maybe_cost {
             let cost = P::Scalar::from_canonical_u32(cost);
-            yield_constr
-                .constraint_transition(lv.is_cpu_cycle * op_flag * (nv.gas - lv.gas - cost));
+            yield_constr.constraint_transition(op_flag * (nv.gas - lv.gas - cost));
         }
     }
+
+    // For jumps.
+    let jump_gas_cost = P::Scalar::from_canonical_u32(G_MID.unwrap())
+        + lv.opcode_bits[0] * P::Scalar::from_canonical_u32(G_HIGH.unwrap() - G_MID.unwrap());
+    yield_constr.constraint_transition(lv.op.jumps * (nv.gas - lv.gas - jump_gas_cost));
 }
 
 fn eval_packed_init<P: PackedField>(
@@ -103,8 +102,10 @@ fn eval_packed_init<P: PackedField>(
     nv: &CpuColumnsView<P>,
     yield_constr: &mut ConstraintConsumer<P>,
 ) {
+    let is_cpu_cycle: P = COL_MAP.op.iter().map(|&col_i| lv[col_i]).sum();
+    let is_cpu_cycle_next: P = COL_MAP.op.iter().map(|&col_i| nv[col_i]).sum();
     // `nv` is the first row that executes an instruction.
-    let filter = (lv.is_cpu_cycle - P::ONES) * nv.is_cpu_cycle;
+    let filter = (is_cpu_cycle - P::ONES) * is_cpu_cycle_next;
     // Set initial gas to zero.
     yield_constr.constraint_transition(filter * nv.gas);
 }
@@ -126,7 +127,7 @@ fn eval_ext_circuit_accumulate<F: RichField + Extendable<D>, const D: usize>(
 ) {
     // Is it an instruction that we constrain here?
     // I.e., does it always cost a constant amount of gas?
-    let is_simple_instr = SIMPLE_OPCODES.into_iter().enumerate().fold(
+    let filter = SIMPLE_OPCODES.into_iter().enumerate().fold(
         builder.zero_extension(),
         |cumul, (i, maybe_cost)| {
             // Add flag `lv.op[i]` to the sum if `SIMPLE_OPCODES[i]` is `Some`.
@@ -136,7 +137,6 @@ fn eval_ext_circuit_accumulate<F: RichField + Extendable<D>, const D: usize>(
             }
         },
     );
-    let filter = builder.mul_extension(lv.is_cpu_cycle, is_simple_instr);
 
     // How much gas did we use?
     let gas_used = SIMPLE_OPCODES.into_iter().enumerate().fold(
@@ -159,18 +159,31 @@ fn eval_ext_circuit_accumulate<F: RichField + Extendable<D>, const D: usize>(
 
     for (maybe_cost, op_flag) in izip!(SIMPLE_OPCODES.into_iter(), lv.op.into_iter()) {
         if let Some(cost) = maybe_cost {
-            let filter = builder.mul_extension(lv.is_cpu_cycle, op_flag);
             let nv_lv_diff = builder.sub_extension(nv.gas, lv.gas);
             let constr = builder.arithmetic_extension(
                 F::ONE,
                 -F::from_canonical_u32(cost),
-                filter,
+                op_flag,
                 nv_lv_diff,
-                filter,
+                op_flag,
             );
             yield_constr.constraint_transition(builder, constr);
         }
     }
+
+    // For jumps.
+    let filter = lv.op.jumps;
+    let jump_gas_cost = builder.mul_const_extension(
+        F::from_canonical_u32(G_HIGH.unwrap() - G_MID.unwrap()),
+        lv.opcode_bits[0],
+    );
+    let jump_gas_cost =
+        builder.add_const_extension(jump_gas_cost, F::from_canonical_u32(G_MID.unwrap()));
+
+    let nv_lv_diff = builder.sub_extension(nv.gas, lv.gas);
+    let gas_diff = builder.sub_extension(nv_lv_diff, jump_gas_cost);
+    let constr = builder.mul_extension(filter, gas_diff);
+    yield_constr.constraint_transition(builder, constr);
 }
 
 fn eval_ext_circuit_init<F: RichField + Extendable<D>, const D: usize>(
@@ -180,7 +193,9 @@ fn eval_ext_circuit_init<F: RichField + Extendable<D>, const D: usize>(
     yield_constr: &mut RecursiveConstraintConsumer<F, D>,
 ) {
     // `nv` is the first row that executes an instruction.
-    let filter = builder.mul_sub_extension(lv.is_cpu_cycle, nv.is_cpu_cycle, nv.is_cpu_cycle);
+    let is_cpu_cycle = builder.add_many_extension(COL_MAP.op.iter().map(|&col_i| lv[col_i]));
+    let is_cpu_cycle_next = builder.add_many_extension(COL_MAP.op.iter().map(|&col_i| nv[col_i]));
+    let filter = builder.mul_sub_extension(is_cpu_cycle, is_cpu_cycle_next, is_cpu_cycle_next);
     // Set initial gas to zero.
     let constr = builder.mul_extension(filter, nv.gas);
     yield_constr.constraint_transition(builder, constr);

@@ -156,13 +156,10 @@ fn fill_op_flag<F: Field>(op: Operation, row: &mut CpuColumnsView<F>) {
         Operation::Push(1..) => &mut flags.push,
         Operation::Dup(_) => &mut flags.dup,
         Operation::Swap(_) => &mut flags.swap,
-        Operation::Iszero => &mut flags.iszero,
+        Operation::Iszero | Operation::Eq => &mut flags.eq_iszero,
         Operation::Not => &mut flags.not,
         Operation::Syscall(_, _, _) => &mut flags.syscall,
-        Operation::Eq => &mut flags.eq,
-        Operation::BinaryLogic(logic::Op::And) => &mut flags.and,
-        Operation::BinaryLogic(logic::Op::Or) => &mut flags.or,
-        Operation::BinaryLogic(logic::Op::Xor) => &mut flags.xor,
+        Operation::BinaryLogic(_) => &mut flags.logic_op,
         Operation::BinaryArithmetic(arithmetic::BinaryOperator::Add) => &mut flags.add,
         Operation::BinaryArithmetic(arithmetic::BinaryOperator::Mul) => &mut flags.mul,
         Operation::BinaryArithmetic(arithmetic::BinaryOperator::Sub) => &mut flags.sub,
@@ -182,12 +179,10 @@ fn fill_op_flag<F: Field>(op: Operation, row: &mut CpuColumnsView<F>) {
         Operation::KeccakGeneral => &mut flags.keccak_general,
         Operation::ProverInput => &mut flags.prover_input,
         Operation::Pop => &mut flags.pop,
-        Operation::Jump => &mut flags.jump,
-        Operation::Jumpi => &mut flags.jumpi,
+        Operation::Jump | Operation::Jumpi => &mut flags.jumps,
         Operation::Pc => &mut flags.pc,
         Operation::Jumpdest => &mut flags.jumpdest,
-        Operation::GetContext => &mut flags.get_context,
-        Operation::SetContext => &mut flags.set_context,
+        Operation::GetContext | Operation::SetContext => &mut flags.context_op,
         Operation::ExitKernel => &mut flags.exit_kernel,
         Operation::MloadGeneral => &mut flags.mload_general,
         Operation::MstoreGeneral => &mut flags.mstore_general,
@@ -247,7 +242,6 @@ fn perform_op<F: Field>(
 /// operation. It also returns the opcode.
 fn base_row<F: Field>(state: &mut GenerationState<F>) -> (CpuColumnsView<F>, u8) {
     let mut row: CpuColumnsView<F> = CpuColumnsView::default();
-    row.is_cpu_cycle = F::ONE;
     row.clock = F::from_canonical_usize(state.traces.clock());
     row.context = F::from_canonical_usize(state.registers.context);
     row.program_counter = F::from_canonical_usize(state.registers.program_counter);

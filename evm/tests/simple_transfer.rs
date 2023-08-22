@@ -1,6 +1,5 @@
-#![allow(clippy::upper_case_acronyms)]
-
 use std::collections::HashMap;
+use std::str::FromStr;
 use std::time::Duration;
 
 use env_logger::{try_init_from_env, Env, DEFAULT_FILTER_ENV};
@@ -10,20 +9,20 @@ use ethereum_types::{Address, U256};
 use hex_literal::hex;
 use keccak_hash::keccak;
 use plonky2::field::goldilocks_field::GoldilocksField;
-use plonky2::plonk::config::PoseidonGoldilocksConfig;
+use plonky2::plonk::config::KeccakGoldilocksConfig;
 use plonky2::util::timing::TimingTree;
 use plonky2_evm::all_stark::AllStark;
 use plonky2_evm::config::StarkConfig;
-use plonky2_evm::generation::mpt::AccountRlp;
+use plonky2_evm::generation::mpt::{AccountRlp, LegacyReceiptRlp};
 use plonky2_evm::generation::{GenerationInputs, TrieInputs};
-use plonky2_evm::proof::BlockMetadata;
+use plonky2_evm::proof::{BlockMetadata, TrieRoots};
 use plonky2_evm::prover::prove;
 use plonky2_evm::verifier::verify_proof;
 use plonky2_evm::Node;
 
 type F = GoldilocksField;
 const D: usize = 2;
-type C = PoseidonGoldilocksConfig;
+type C = KeccakGoldilocksConfig;
 
 /// Test a simple token transfer to a new address.
 #[test]
@@ -72,25 +71,14 @@ fn test_simple_transfer() -> anyhow::Result<()> {
         block_timestamp: 0x03e8.into(),
         block_number: 1.into(),
         block_difficulty: 0x020000.into(),
-        block_gaslimit: 0xff112233445566u64.into(),
+        block_gaslimit: 0xff112233u32.into(),
         block_chain_id: 1.into(),
         block_base_fee: 0xa.into(),
+        block_bloom: [0.into(); 8],
     };
 
     let mut contract_code = HashMap::new();
     contract_code.insert(keccak(vec![]), vec![]);
-
-    let inputs = GenerationInputs {
-        signed_txns: vec![txn.to_vec()],
-        tries: tries_before,
-        contract_code,
-        block_metadata,
-        addresses: vec![],
-    };
-
-    let mut timing = TimingTree::new("prove", log::Level::Debug);
-    let proof = prove::<F, C, D>(&all_stark, &config, inputs, &mut timing)?;
-    timing.filter(Duration::from_millis(100)).print();
 
     let expected_state_trie_after: HashedPartialTrie = {
         let txdata_gas = 2 * 16;
@@ -124,10 +112,35 @@ fn test_simple_transfer() -> anyhow::Result<()> {
         .into()
     };
 
-    assert_eq!(
-        proof.public_values.trie_roots_after.state_root,
-        expected_state_trie_after.hash()
+    let receipt_0 = LegacyReceiptRlp {
+        status: true,
+        cum_gas_used: 21032.into(),
+        bloom: vec![0; 256].into(),
+        logs: vec![],
+    };
+    let mut receipts_trie = HashedPartialTrie::from(Node::Empty);
+    receipts_trie.insert(
+        Nibbles::from_str("0x80").unwrap(),
+        rlp::encode(&receipt_0).to_vec(),
     );
+
+    let trie_roots_after = TrieRoots {
+        state_root: expected_state_trie_after.hash(),
+        transactions_root: tries_before.transactions_trie.hash(), // TODO: Fix this when we have transactions trie.
+        receipts_root: receipts_trie.hash(),
+    };
+    let inputs = GenerationInputs {
+        signed_txns: vec![txn.to_vec()],
+        tries: tries_before,
+        trie_roots_after,
+        contract_code,
+        block_metadata,
+        addresses: vec![],
+    };
+
+    let mut timing = TimingTree::new("prove", log::Level::Debug);
+    let proof = prove::<F, C, D>(&all_stark, &config, inputs, &mut timing)?;
+    timing.filter(Duration::from_millis(100)).print();
 
     verify_proof(&all_stark, proof, &config)
 }

@@ -9,20 +9,20 @@ use ethereum_types::Address;
 use hex_literal::hex;
 use keccak_hash::keccak;
 use plonky2::field::goldilocks_field::GoldilocksField;
-use plonky2::plonk::config::PoseidonGoldilocksConfig;
+use plonky2::plonk::config::KeccakGoldilocksConfig;
 use plonky2::util::timing::TimingTree;
 use plonky2_evm::all_stark::AllStark;
 use plonky2_evm::config::StarkConfig;
-use plonky2_evm::generation::mpt::AccountRlp;
+use plonky2_evm::generation::mpt::{AccountRlp, LegacyReceiptRlp};
 use plonky2_evm::generation::{GenerationInputs, TrieInputs};
-use plonky2_evm::proof::BlockMetadata;
+use plonky2_evm::proof::{BlockMetadata, TrieRoots};
 use plonky2_evm::prover::prove;
 use plonky2_evm::verifier::verify_proof;
 use plonky2_evm::Node;
 
 type F = GoldilocksField;
 const D: usize = 2;
-type C = PoseidonGoldilocksConfig;
+type C = KeccakGoldilocksConfig;
 
 /// The `selfBalanceGasCost` test case from https://github.com/ethereum/tests
 #[test]
@@ -48,6 +48,18 @@ fn self_balance_gas_cost() -> anyhow::Result<()> {
     let code = [
         0x5a, 0x47, 0x5a, 0x90, 0x50, 0x90, 0x03, 0x60, 0x02, 0x90, 0x03, 0x60, 0x01, 0x55, 0x00,
     ];
+    let code_gas = 2 // GAS
+    + 5 // SELFBALANCE
+    + 2 // GAS
+    + 3 // SWAP1
+    + 2 // POP
+    + 3 // SWAP1
+    + 3 // SUB
+    + 3 // PUSH1
+    + 3 // SWAP1
+    + 3 // SUB
+    + 3 // PUSH1
+    + 22100; // SSTORE
     let code_hash = keccak(code);
 
     let beneficiary_account_before = AccountRlp::default();
@@ -87,9 +99,60 @@ fn self_balance_gas_cost() -> anyhow::Result<()> {
     contract_code.insert(keccak(vec![]), vec![]);
     contract_code.insert(code_hash, code.to_vec());
 
+    let expected_state_trie_after = {
+        let beneficiary_account_after = AccountRlp::default();
+        let sender_account_after = AccountRlp {
+            balance: 999999999999999568680u128.into(),
+            nonce: 1.into(),
+            ..AccountRlp::default()
+        };
+        let to_account_after = AccountRlp {
+            code_hash,
+            // Storage map: { 1 => 5 }
+            storage_root: HashedPartialTrie::from(Node::Leaf {
+                // TODO: Could do keccak(pad32(1))
+                nibbles: Nibbles::from_str(
+                    "0xb10e2d527612073b26eecdfd717e6a320cf44b4afac2b0732d9fcbe2b7fa0cf6",
+                )
+                .unwrap(),
+                value: vec![5],
+            })
+            .hash(),
+            ..AccountRlp::default()
+        };
+
+        let mut expected_state_trie_after = HashedPartialTrie::from(Node::Empty);
+        expected_state_trie_after.insert(
+            beneficiary_nibbles,
+            rlp::encode(&beneficiary_account_after).to_vec(),
+        );
+        expected_state_trie_after
+            .insert(sender_nibbles, rlp::encode(&sender_account_after).to_vec());
+        expected_state_trie_after.insert(to_nibbles, rlp::encode(&to_account_after).to_vec());
+        expected_state_trie_after
+    };
+
+    let gas_used = 21_000 + code_gas;
+    let receipt_0 = LegacyReceiptRlp {
+        status: true,
+        cum_gas_used: gas_used.into(),
+        bloom: vec![0; 256].into(),
+        logs: vec![],
+    };
+    let mut receipts_trie = HashedPartialTrie::from(Node::Empty);
+    receipts_trie.insert(
+        Nibbles::from_str("0x80").unwrap(),
+        rlp::encode(&receipt_0).to_vec(),
+    );
+    let trie_roots_after = TrieRoots {
+        state_root: expected_state_trie_after.hash(),
+        transactions_root: tries_before.transactions_trie.hash(), // TODO: Fix this when we have transactions trie.
+        receipts_root: receipts_trie.hash(),
+    };
     let inputs = GenerationInputs {
         signed_txns: vec![txn.to_vec()],
         tries: tries_before,
+        trie_roots_after,
         contract_code,
         block_metadata,
         addresses: vec![],
@@ -98,40 +161,6 @@ fn self_balance_gas_cost() -> anyhow::Result<()> {
     let mut timing = TimingTree::new("prove", log::Level::Debug);
     let proof = prove::<F, C, D>(&all_stark, &config, inputs, &mut timing)?;
     timing.filter(Duration::from_millis(100)).print();
-
-    let beneficiary_account_after = AccountRlp::default();
-    let sender_account_after = AccountRlp {
-        balance: 999999999999999568680u128.into(),
-        nonce: 1.into(),
-        ..AccountRlp::default()
-    };
-    let to_account_after = AccountRlp {
-        code_hash,
-        // Storage map: { 1 => 5 }
-        storage_root: HashedPartialTrie::from(Node::Leaf {
-            // TODO: Could do keccak(pad32(1))
-            nibbles: Nibbles::from_str(
-                "0xb10e2d527612073b26eecdfd717e6a320cf44b4afac2b0732d9fcbe2b7fa0cf6",
-            )
-            .unwrap(),
-            value: vec![5],
-        })
-        .hash(),
-        ..AccountRlp::default()
-    };
-
-    let mut expected_state_trie_after = HashedPartialTrie::from(Node::Empty);
-    expected_state_trie_after.insert(
-        beneficiary_nibbles,
-        rlp::encode(&beneficiary_account_after).to_vec(),
-    );
-    expected_state_trie_after.insert(sender_nibbles, rlp::encode(&sender_account_after).to_vec());
-    expected_state_trie_after.insert(to_nibbles, rlp::encode(&to_account_after).to_vec());
-
-    assert_eq!(
-        proof.public_values.trie_roots_after.state_root,
-        expected_state_trie_after.hash()
-    );
 
     verify_proof(&all_stark, proof, &config)
 }

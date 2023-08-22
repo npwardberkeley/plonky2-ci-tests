@@ -35,13 +35,6 @@ pub struct MemoryChannelView<T: Copy> {
 #[repr(C)]
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
 pub struct CpuColumnsView<T: Copy> {
-    /// Filter. 1 if the row is part of bootstrapping the kernel code, 0 otherwise.
-    pub is_bootstrap_kernel: T,
-
-    /// Filter. 1 if the row corresponds to a cycle of execution and 0 otherwise.
-    /// Lets us re-use columns in non-cycle rows.
-    pub is_cpu_cycle: T,
-
     /// If CPU cycle: Current context.
     // TODO: this is currently unconstrained
     pub context: T,

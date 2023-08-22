@@ -73,6 +73,7 @@ pub(crate) fn h256_limbs<F: Field>(h256: H256) -> [F; 8] {
         .unwrap()
 }
 
+#[allow(unused)]
 /// Returns the 32-bit limbs of a `U160`.
 pub(crate) fn h160_limbs<F: Field>(h160: H160) -> [F; 5] {
     h160.0
@@ -173,4 +174,8 @@ pub(crate) fn biguint_to_mem_vec(x: BigUint) -> Vec<U256> {
         mem_vec.push(U256::from(lo as u128 | (hi as u128) << 64));
     }
     mem_vec
+}
+
+pub(crate) fn h2u(h: H256) -> U256 {
+    U256::from_big_endian(&h.0)
 }

@@ -22,12 +22,8 @@ pub struct OpsColumnsView<T: Copy> {
     pub submod: T,
     pub lt: T,
     pub gt: T,
-    pub eq: T,     // Note: This column must be 0 when is_cpu_cycle = 0.
-    pub iszero: T, // Note: This column must be 0 when is_cpu_cycle = 0.
-    // TODO: combine AND, OR, and XOR into one flag
-    pub and: T,
-    pub or: T,
-    pub xor: T,
+    pub eq_iszero: T, // Combines EQ and ISZERO flags.
+    pub logic_op: T,  // Combines AND, OR and XOR flags.
     pub not: T,
     pub byte: T,
     // TODO: combine SHL and SHR into one flag
@@ -37,24 +33,21 @@ pub struct OpsColumnsView<T: Copy> {
     pub prover_input: T,
     pub pop: T,
     // TODO: combine JUMP and JUMPI into one flag
-    pub jump: T,  // Note: This column must be 0 when is_cpu_cycle = 0.
-    pub jumpi: T, // Note: This column must be 0 when is_cpu_cycle = 0.
+    pub jumps: T, // Note: This column must be 0 when is_cpu_cycle = 0.
     pub pc: T,
     pub jumpdest: T,
     pub push0: T,
     pub push: T,
     pub dup: T,
     pub swap: T,
-    // TODO: combine GET_CONTEXT and SET_CONTEXT into one flag
-    pub get_context: T,
-    pub set_context: T,
-    pub exit_kernel: T, // Note: This column must be 0 when is_cpu_cycle = 0.
+    pub context_op: T,
+    pub exit_kernel: T,
     // TODO: combine MLOAD_GENERAL and MSTORE_GENERAL into one flag
     pub mload_general: T,
     pub mstore_general: T,
 
-    pub syscall: T,   // Note: This column must be 0 when is_cpu_cycle = 0.
-    pub exception: T, // Note: This column must be 0 when is_cpu_cycle = 0.
+    pub syscall: T,
+    pub exception: T,
 }
 
 // `u8` is guaranteed to have a `size_of` of 1.

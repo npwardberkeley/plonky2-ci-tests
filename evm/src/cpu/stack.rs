@@ -12,7 +12,7 @@ use crate::cpu::membus::NUM_GP_CHANNELS;
 use crate::memory::segments::Segment;
 
 #[derive(Clone, Copy)]
-struct StackBehavior {
+pub(crate) struct StackBehavior {
     num_pops: usize,
     pushes: bool,
     disable_other_channels: bool,
@@ -32,6 +32,16 @@ const BASIC_TERNARY_OP: Option<StackBehavior> = Some(StackBehavior {
     num_pops: 3,
     pushes: true,
     disable_other_channels: true,
+});
+pub(crate) const JUMP_OP: Option<StackBehavior> = Some(StackBehavior {
+    num_pops: 1,
+    pushes: false,
+    disable_other_channels: false,
+});
+pub(crate) const JUMPI_OP: Option<StackBehavior> = Some(StackBehavior {
+    num_pops: 2,
+    pushes: false,
+    disable_other_channels: false,
 });
 
 // AUDITORS: If the value below is `None`, then the operation must be manually checked to ensure
@@ -53,11 +63,8 @@ const STACK_BEHAVIORS: OpsColumnsView<Option<StackBehavior>> = OpsColumnsView {
     submod: BASIC_TERNARY_OP,
     lt: BASIC_BINARY_OP,
     gt: BASIC_BINARY_OP,
-    eq: BASIC_BINARY_OP,
-    iszero: BASIC_UNARY_OP,
-    and: BASIC_BINARY_OP,
-    or: BASIC_BINARY_OP,
-    xor: BASIC_BINARY_OP,
+    eq_iszero: None, // EQ is binary, IS_ZERO is unary.
+    logic_op: BASIC_BINARY_OP,
     not: BASIC_UNARY_OP,
     byte: BASIC_BINARY_OP,
     shl: Some(StackBehavior {
@@ -81,16 +88,7 @@ const STACK_BEHAVIORS: OpsColumnsView<Option<StackBehavior>> = OpsColumnsView {
         pushes: false,
         disable_other_channels: true,
     }),
-    jump: Some(StackBehavior {
-        num_pops: 1,
-        pushes: false,
-        disable_other_channels: false,
-    }),
-    jumpi: Some(StackBehavior {
-        num_pops: 2,
-        pushes: false,
-        disable_other_channels: false,
-    }),
+    jumps: None, // Depends on whether it's a JUMP or a JUMPI.
     pc: Some(StackBehavior {
         num_pops: 0,
         pushes: true,
@@ -109,12 +107,7 @@ const STACK_BEHAVIORS: OpsColumnsView<Option<StackBehavior>> = OpsColumnsView {
     push: None, // TODO
     dup: None,
     swap: None,
-    get_context: Some(StackBehavior {
-        num_pops: 0,
-        pushes: true,
-        disable_other_channels: true,
-    }),
-    set_context: None, // SET_CONTEXT is special since it involves the old and the new stack.
+    context_op: None, // SET_CONTEXT is special since it involves the old and the new stack.
     exit_kernel: Some(StackBehavior {
         num_pops: 1,
         pushes: false,
@@ -142,7 +135,10 @@ const STACK_BEHAVIORS: OpsColumnsView<Option<StackBehavior>> = OpsColumnsView {
     }),
 };
 
-fn eval_packed_one<P: PackedField>(
+pub(crate) const EQ_STACK_BEHAVIOR: Option<StackBehavior> = BASIC_BINARY_OP;
+pub(crate) const IS_ZERO_STACK_BEHAVIOR: Option<StackBehavior> = BASIC_UNARY_OP;
+
+pub(crate) fn eval_packed_one<P: PackedField>(
     lv: &CpuColumnsView<P>,
     filter: P,
     stack_behavior: StackBehavior,
@@ -197,13 +193,12 @@ pub fn eval_packed<P: PackedField>(
 ) {
     for (op, stack_behavior) in izip!(lv.op.into_iter(), STACK_BEHAVIORS.into_iter()) {
         if let Some(stack_behavior) = stack_behavior {
-            let filter = lv.is_cpu_cycle * op;
-            eval_packed_one(lv, filter, stack_behavior, yield_constr);
+            eval_packed_one(lv, op, stack_behavior, yield_constr);
         }
     }
 }
 
-fn eval_ext_circuit_one<F: RichField + Extendable<D>, const D: usize>(
+pub(crate) fn eval_ext_circuit_one<F: RichField + Extendable<D>, const D: usize>(
     builder: &mut plonky2::plonk::circuit_builder::CircuitBuilder<F, D>,
     lv: &CpuColumnsView<ExtensionTarget<D>>,
     filter: ExtensionTarget<D>,
@@ -312,8 +307,7 @@ pub fn eval_ext_circuit<F: RichField + Extendable<D>, const D: usize>(
 ) {
     for (op, stack_behavior) in izip!(lv.op.into_iter(), STACK_BEHAVIORS.into_iter()) {
         if let Some(stack_behavior) = stack_behavior {
-            let filter = builder.mul_extension(lv.is_cpu_cycle, op);
-            eval_ext_circuit_one(builder, lv, filter, stack_behavior, yield_constr);
+            eval_ext_circuit_one(builder, lv, op, stack_behavior, yield_constr);
         }
     }
 }
