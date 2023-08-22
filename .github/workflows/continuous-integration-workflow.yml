@@ -31,17 +31,6 @@ jobs:
           override: true
           target: armv7-unknown-linux-gnueabihf
 
-      - name: rust-cache
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: rustc-test-${{ steps.rustc-toolchain.outputs.rustc_hash }}-cargo-${{ hashFiles('**/Cargo.toml') }}
-
       - name: Check in plonky2 subdirectory
         uses: actions-rs/cargo@v1
         with:
