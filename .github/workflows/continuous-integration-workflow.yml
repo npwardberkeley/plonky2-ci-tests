@@ -19,6 +19,13 @@ jobs:
       matrix:
         feature: [ "+v7,+neon", "-neon" ]
     steps:
+      - name: Cleanup build folder
+        run: |
+          ls -la ./
+          rm -rf ./* || true
+          rm -rf ./.??* || true
+          ls -la ./
+    
       - name: Checkout sources
         uses: actions/checkout@v2
 
