@@ -13,7 +13,7 @@ on:
 jobs:  
   test-aarch64:
     name: Test Suite ARM
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     if: "! contains(toJSON(github.event.commits.*.message), '[skip-ci]')"
     strategy: 
       matrix:
