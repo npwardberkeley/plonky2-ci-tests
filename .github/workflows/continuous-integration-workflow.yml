@@ -17,7 +17,7 @@ jobs:
     if: "! contains(toJSON(github.event.commits.*.message), '[skip-ci]')"
     strategy: 
       matrix:
-        feature: [ "+v7,+neon", "-neon" ]
+        feature: [ "+neon", "-neon" ]
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
@@ -27,7 +27,7 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: nightly-2023-06-30
+          toolchain: nightly
           override: true
           target: armv7-unknown-linux-gnueabihf
 
@@ -92,7 +92,7 @@ jobs:
     if: "! contains(toJSON(github.event.commits.*.message), '[skip-ci]')"
     strategy: 
       matrix:
-        feature: [ +avx2, "-avx2,-avx512bw,-avx512cd,-avx512dq,-avx512f,-avx512vl", "+avx512bw,+avx512cd,+avx512dq,+avx512f,+avx512vl" ]
+        feature: [ "+avx512bw,+avx512cd,+avx512dq,+avx512f,+avx512vl", +avx2, "-avx2,-avx512bw,-avx512cd,-avx512dq,-avx512f,-avx512vl" ]
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
@@ -102,7 +102,7 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: nightly-2023-06-30
+          toolchain: nightly
           override: true
           target: x86_64-unknown-linux-gnu
 
