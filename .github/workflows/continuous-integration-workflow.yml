@@ -13,7 +13,7 @@ on:
 jobs:  
   test-aarch64:
     name: Test Suite ARM
-    runs-on: [self-hosted, ARM64]
+    runs-on: [self-hosted, ARM64, bigboi]
     if: "! contains(toJSON(github.event.commits.*.message), '[skip-ci]')"
     strategy: 
       matrix:
@@ -88,7 +88,7 @@ jobs:
           
   test-x86:
     name: Test Suite x86
-    runs-on: [self-hosted, X64]
+    runs-on: [self-hosted, X64, bigboi]
     if: "! contains(toJSON(github.event.commits.*.message), '[skip-ci]')"
     strategy: 
       matrix:
