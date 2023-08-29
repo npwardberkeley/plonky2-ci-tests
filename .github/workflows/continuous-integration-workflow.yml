@@ -92,7 +92,8 @@ jobs:
     if: "! contains(toJSON(github.event.commits.*.message), '[skip-ci]')"
     strategy: 
       matrix:
-        feature: [ "+avx512bw,+avx512cd,+avx512dq,+avx512f,+avx512vl", +avx2, "-avx2,-avx512bw,-avx512cd,-avx512dq,-avx512f,-avx512vl" ]
+        # feature: [ "+avx512bw,+avx512cd,+avx512dq,+avx512f,+avx512vl", +avx2, "-avx2,-avx512bw,-avx512cd,-avx512dq,-avx512f,-avx512vl" ]
+        feature: [ +avx2, "-avx2,-avx512bw,-avx512cd,-avx512dq,-avx512f,-avx512vl" ]
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
