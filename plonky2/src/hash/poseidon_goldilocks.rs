@@ -290,6 +290,7 @@ impl Poseidon for GoldilocksField {
     #[cfg(all(target_arch="aarch64", target_feature="neon"))]
     #[inline(always)]
     fn sbox_layer(state: &mut [Self; 12]) {
+        panic!();
         unsafe {
             crate::hash::arch::aarch64::poseidon_goldilocks_neon::sbox_layer(state);
         }
